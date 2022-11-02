@@ -15,7 +15,7 @@ taskDataFolderList = {...
     'F:\~~~RockyData\BORTRig\TaskData\20220216to20220303_chokingReachingExperimentsAndChoice\centerOutData_20220302_153642\';
     };
 workingFolder = [pwd '\']; % This is where the functions and classes needed are, at least beneath it
-outputFolder = [workingFolder 'preprocFiles_behaviorAndSpikeInitialProcessed\\'] ; % where to save files
+outputFolder = ['C:\Users\xzhou\Documents\GitHub\preprocessingCode\data\processed_partial\'] ; % where to save files
 
 % Things that shouldn't change over days
 trialDataTag = 'Trial0'; % what each trial data file starts with
@@ -39,20 +39,39 @@ for f = 1:nfiles
     dateString = taskDataFolderList{f}(end-15:end-1) % show it for confirmation
     load([taskDataFolderList{f} 'taskInfo.mat'])
     
-    % Process the behavior
-    load(spikeAndAnalogDataFileList{f})
-    [trialData,taskInfo] = pp_preprocessTaskAndKinematicData_choking(taskDataFolderList{f},rewardNames,synchInfo);
-    
-    % Attach spikes to trialData
-    [trialData,taskInfo] = pp_spikeAlignmentToTrial(taskAlignedSpiketimes,synchInfo,trialData,taskInfo);
-    
-    % Save!
-    saveFilename = ['Rocky' ...
+    % Set up file name
+    procTimeString = datestr(now,'yyyymmdd_HHMMSS');
+    saveFilenameBase = ['Rocky' ...
         taskDataFolderList{f}(end-15:end-8) ...
         '_Trials' num2str(trialData(1).trial) ...
         '_' num2str(trialData(end).trial) '_behaviorAndSpikesInitialProcessed_' ...
-        grabDateTimeString];
-    save([outputFolder saveFilename],'trialData','taskInfo','analogData','synchInfo','taskAlignedSpiketimes')
+        ];
+    
+    % Do an initial processing of the behavior
+    load(spikeAndAnalogDataFileList{f})
+    [trialData,taskInfo,kinematicData] = pp_preprocessTaskAndKinematicData(taskDataFolderList{f},rewardNames,synchInfo);
+    save([outputFolder saveFilenameBase 'TSK_' procTimeString],'trialData')
+    save([outputFolder saveFilenameBase 'KIN_' procTimeString],'kinematicData')
+    
+    % Attach spikes to trialData
+    [trialData,taskInfo,neuralData] = pp_spikeAlignmentToTrial(taskAlignedSpiketimes,synchInfo,trialData,taskInfo);
+    save([outputFolder saveFilenameBase 'NER_' procTimeString],'neuralData')
+    
+    % Preprocess EMG and ECG data
+    
+    % Preprocess eye data
+    
+    % Assess various data streams for further pr
+    
+    
+    
+%     % Save!
+%     saveFilename = ['Rocky' ...
+%         taskDataFolderList{f}(end-15:end-8) ...
+%         '_Trials' num2str(trialData(1).trial) ...
+%         '_' num2str(trialData(end).trial) '_behaviorAndSpikesInitialProcessed_' ...
+%         datestr(now,'yyyymmdd_HHMMSS')];
+%     save([outputFolder saveFilename],'trialData','taskInfo','analogData','synchInfo','taskAlignedSpiketimes')
     
 %     % If these files get too big, split up into smaller files
 %     disp('Saving in sections of 500 trials')

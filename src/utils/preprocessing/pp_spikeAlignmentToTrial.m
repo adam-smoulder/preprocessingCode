@@ -1,4 +1,4 @@
-function [trialData,taskInfo] = pp_spikeAlignmentToTrial(taskAlignedSpiketimes,synchInfo,trialData,taskInfo)
+function [trialData,taskInfo,neuralData] = pp_spikeAlignmentToTrial(taskAlignedSpiketimes,synchInfo,trialData,taskInfo)
 % This function preprocesses the neural spike data by taking the full
 % spiketrains of the data and properly apportioning them to the relevant
 % trials.
@@ -71,15 +71,15 @@ for i = 1:ntrials
     end; clear j
     
     % Assign the relevant information
-    neuralData.channel = channel;
-    neuralData.sort = sort;
-    neuralData.spikeMatrix = spikeMatrix;
-    trialData(i).neuralData = neuralData;
+    neuralData(i).channel = channel;
+    neuralData(i).sort = sort;
+    neuralData(i).spikeMatrix = spikeMatrix;
+%     trialData(i).neuralData = neuralData;
     clear spikeMatrix
     
     if mod(i,25)==0,disp(['Aligned spikes for trial ' num2str(i)]); end
 end; clear i
-taskInfo.meanWaveforms = meanWaveformMatrix;
+taskInfo.ppInfo_NER.meanWaveforms = meanWaveformMatrix;
 
 disp('Done aligning spikes to trials')
 

@@ -1,4 +1,4 @@
-function [trialData,taskInfo] = pp_preprocessTaskAndKinematicData(taskDataFolder,rewardNames,synchInfo)
+function [trialData,taskInfo,kinematicData] = pp_preprocessTaskAndKinematicData(taskDataFolders,rewardNames,synchInfo)
 % This fucntion preprocesses the behavioral data for each trial of Rocky's
 % delayed center out task for further use. Specifically, it does 3
 % things:
@@ -26,24 +26,29 @@ function [trialData,taskInfo] = pp_preprocessTaskAndKinematicData(taskDataFolder
 %     - prevDirectionLabel: previous direction label; set to 1 for first trial each day
 %     - prevRewardLabel: previous reward label; set to 1 (I think?) for first trial each day
 %     - time: [ntime x 1] relative time for this trial, where 0 = center target appearance
-%     - handKinematics: structure with the following fields
+% - kinematicData: structure with the following fields
 %     - position/velocity/acceleration: [ntime x 3] matrices with the kinematics interpolated to 1KHz for this trial in [X Y Z]
-%     - originalFs/newFs: old and new sampling frequencies
 % - taskInfo: structure with information about task parameters. Contains many fields, but some important ones include:
 %     - centerHoldTime: Amount of time in ms the center is held (state 2) before the target shows up (state 3)
 %     - targetHoldTime: Amount of time in ms that the reach target must be held (state 6) until the reward state (state 7) is entered
 %     - lim_reachTime: scalar, maximum time allowed after go cue (state 4) until the trial is deemed a failure
 %     - stateInfo: name and # associated with each state in stateTable
+%     - ppInfo_KIN: contains parameters used for kinematic processing
 %
 % Assumes the Target.m class is somewhere in the path
 %
-% Adam Smoulder, 12/3/21
-
+% Adam Smoulder, 11/2/22
+%
+% NOTE: The top section here will need edited for datasets with more than
+% one task data folder (i.e. expts with task restarts between blocks). To
+% do this, you just need to loop over the taskDataFolders when assembling
+% instead of just accessing element {1}
+% trialData. 
 
 %% First, load all of the trial data
 disp('Beginning preprocessing for task and kinematic data')
-disp(taskDataFolder)
-allFiles = dir(taskDataFolder);
+disp(taskDataFolders)
+allFiles = dir(taskDataFolders{1});
 nfiles = size(allFiles,1);
 trialCount = 0;
 goodInds = [];
@@ -51,7 +56,7 @@ for i = 1:nfiles
     curFileName = allFiles(i).name;
     if length(curFileName)>=14 && (strcmp(curFileName(1:5),'Trial') && strcmp(curFileName(end-3:end),'.mat')) % If a trial file
         trialCount = trialCount+1;
-        curTrialData = load([taskDataFolder curFileName]);
+        curTrialData = load([taskDataFolders{1} curFileName]);
         if trialCount==1
             trialData = curTrialData.trialData;
         else
@@ -72,7 +77,7 @@ ntrials = length(trialData);
 %  Load taskInfo and add parameters if they're missing; even if multiple 
 %  sessions are combined, for ease, we're going to assume taskInfo from the
 %  last session is relevant
-load([taskDataFolder 'taskInfo.mat'])
+load([taskDataFolders{1} 'taskInfo.mat'])
 displayParams = taskInfo.displayParams;
 if ~any(contains(fieldnames(displayParams),'AFFECTOR_CENTER'))
     disp('Adding default AFFECTOR_CENTER')
@@ -91,7 +96,7 @@ end
 %% Go through each trial and extract/filter all things needed
 
 % Set parameters
-targetAngles = 0:45:315; disp('ASSUMING 8 TARGET LOCATIONS')
+targetAngles = 0:45:315; disp('ASSUMING DEFAULT 8 TARGET LOCATIONS')
 initialFs = 60; % nominal frequency of the hand data
 finalFs = 1000; % final desired frequency to interpolate to
 fc = 10;        % cutoff frequency of LPF for kinematics
@@ -199,7 +204,7 @@ for i = 1:length(trialData)
     curKinTime = trialData(i).time*1000; % w.r.t. start of trial; in ms
     curPos = (trialData(i).affectorPosition-taskInfo.displayParams.AFFECTOR_CENTER)*taskInfo.displayParams.AFF_TO_SCREEN_SF.*[1 -1 1]; 
     if i == 1
-        z_center = mean(curPos(:,3)); % the affector center for z is meaningless since it's unused, so set an arbitrary mean
+        z_center = median(curPos(:,3)); % the affector center for z is meaningless since it's unused, so set an arbitrary mean
     end
     curPos(:,3) = curPos(:,3)-z_center;
     
@@ -253,22 +258,29 @@ for i = 1:length(trialData)
     
     % Interpolate to the new fs and align to center target appearance
     time = (ceil(min(posTime)):1000/finalFs:floor(max(posTime)))';
-    handKinematics.position = interp1(posTime,curPos_filt,time,'spline');
-    handKinematics.velocity = interp1(velTime,curVel_filt,time,'spline');
-    handKinematics.acceleration = interp1(accTime,curAcc_filt,time,'spline');
-    handKinematics.originalFs = initialFs;
-    handKinematics.newFs = finalFs;
+    kinematicData(i).position = interp1(posTime,curPos_filt,time,'spline');
+    kinematicData(i).velocity = interp1(velTime,curVel_filt,time,'spline');
+    kinematicData(i).acceleration = interp1(accTime,curAcc_filt,time,'spline');
     centerTargAppearTime = trialData(i).stateTable(2,find(trialData(i).stateTable(1,:)==trialStartState,1));
     newTrialData(i).time = time-centerTargAppearTime;
-    newTrialData(i).handKinematics = handKinematics;
     newTrialData(i).stateTable(2,:) = newTrialData(i).stateTable(2,:)-centerTargAppearTime;
-    
     
     if mod(i,100)==0, disp(['Processed trial ' num2str(i)]); end
 end; clear i
-trialData = newTrialData'; clear newTrialData; 
+trialData = newTrialData'; clear newTrialData;
 disp(['Identified ' num2str(ncursorjump) ' cursor jump trials and ' num2str(nunattempted) ' unattempted trials to be removed']) 
 
+% Get across-trial info too
+ppInfo_KIN.originalFs = initialFs;
+ppInfo_KIN.newFs = finalFs;
+ppInfo_KIN.LPFOrder = order;
+ppInfo_KIN.fc = fc;
+
+% clean up taskInfo a bit
+taskParams = rmfield(taskInfo,{'subjectName','datetime'});
+taskInfo = rmfield(taskInfo,fieldnames(taskParams));
+taskInfo.taskParams = taskParams;
+taskInfo.ppInfo_KIN = ppInfo_KIN;
 
 end
 
